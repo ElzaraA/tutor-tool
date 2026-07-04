@@ -1,0 +1,9 @@
+CREATE TABLE lessons (
+    id SERIAL PRIMARY KEY,
+    pupil_id INTEGER REFERENCES pupils(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    duration INTEGER NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'scheduled', 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
