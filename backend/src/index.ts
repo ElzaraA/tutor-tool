@@ -14,11 +14,10 @@ app.get('/', (req, res) => {
 });
 
 //все ученики
-app.get('/pupils', async (req, res) => {
+app.get('/pupils', authMiddleware, async (req: AuthRequest, res) => {
     try {
-        const result = await pool.query('SELECT * FROM pupils ORDER BY id');
-        
-        // Преобразуем snake_case в camelCase
+        const result = await pool.query('SELECT * FROM pupils WHERE user_id = $1 ORDER BY id', [req.user!.id]);
+    
         const pupils = result.rows.map(p => ({
         id: p.id,
         name: p.name,
@@ -31,7 +30,7 @@ app.get('/pupils', async (req, res) => {
     } catch (error) {
         console.error('Ошибка при получении учеников:', error);
         res.status(500).json({ error: 'Ошибка сервера' });
-    }
+        }
 });
 //конкретный ученик
 app.get('/pupils/:id', async (req, res) => {
@@ -59,19 +58,27 @@ app.get('/pupils/:id', async (req, res) => {
     }
 });
 //Эндпоинт для создания нового ученика
-app.post('/pupils', async (req, res) => {
+app.post('/pupils', authMiddleware, async (req: AuthRequest, res) => {
     try {
-    const { name, grade, averageScore, homeworkCompleted } = req.body;
-    
-    const result = await pool.query(
-      'INSERT INTO pupils (name, grade, average_score, homework_completed) VALUES ($1, $2, $3, $4) RETURNING *',
-        [name, grade, averageScore, homeworkCompleted]
-    );
-    
-    res.status(201).json(result.rows[0]);
+        const { name, grade, averageScore, homeworkCompleted } = req.body;
+        
+        const result = await pool.query(
+        `INSERT INTO pupils (name, grade, average_score, homework_completed, user_id) 
+        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [name, grade, averageScore, homeworkCompleted, req.user!.id]
+        );
+        
+        const pupil = result.rows[0];
+        res.status(201).json({
+        id: pupil.id,
+        name: pupil.name,
+        grade: pupil.grade,
+        averageScore: Number(pupil.average_score),
+        homeworkCompleted: Number(pupil.homework_completed),
+        });
     } catch (error) {
-    console.error('Ошибка при создании ученика:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+        console.error('Ошибка при создании ученика:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
 //Получаем все домашки конкретного ученика
@@ -124,22 +131,22 @@ app.get('/lessons', async (req, res) => {
     });
 
     // Создать новый урок
-    app.post('/lessons', async (req, res) => {
-    try {
-        const { pupil_id, date, duration, price, status } = req.body;
-        
-        const result = await pool.query(
-        `INSERT INTO lessons (pupil_id, date, duration, price, status) 
-        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [pupil_id, date, duration, price, status || 'scheduled']
-        );
-        
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error('Ошибка при создании урока:', error);
-        res.status(500).json({ error: 'Ошибка сервера' });
-    }
-    });
+    app.post('/lessons', authMiddleware, async (req: AuthRequest, res) => {
+        try {
+            const { pupil_id, date, duration, price, topic, note } = req.body;
+            
+            const result = await pool.query(
+            `INSERT INTO lessons (pupil_id, date, duration, price, topic, note, user_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [pupil_id, date, duration, price, topic || null, note || null, req.user!.id]
+            );
+            
+            res.status(201).json(result.rows[0]);
+        } catch (error) {
+            console.error('Ошибка при создании урока:', error);
+            res.status(500).json({ error: 'Ошибка сервера' });
+        }
+});
 
     // Обновить статус урока
     app.patch('/lessons/:id', async (req, res) => {
@@ -282,6 +289,95 @@ app.delete('/pupils/:id', async (req, res) => {
         res.status(500).json({ error: 'Ошибка сервера' });
     }
     });
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { authMiddleware, AuthRequest } from './auth.js';
+
+// РЕГИСТРАЦИЯ
+app.post('/register', async (req, res) => {
+    try {
+        const { email, password, name, rememberMe } = req.body;
+        
+        // Проверяем, есть ли уже такой пользователь
+        const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (existingUser.rows.length > 0) {
+        return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+        }
+        
+        // Хешируем пароль
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Создаем пользователя
+        const result = await pool.query(
+        'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+        [email, hashedPassword, name]
+        );
+        const user = result.rows[0];
+        // Создаем токен
+        const expiresIn = rememberMe ? '30d' : '7d';
+
+        const token = jwt.sign(
+            { id: user.id, email: user.email },
+            process.env.JWT_SECRET || 'secret',
+            { expiresIn } // <-- используем переменную
+);
+        
+        res.json({
+        token,
+        user: { id: result.rows[0].id, email: result.rows[0].email, name: result.rows[0].name }
+        });
+    } catch (error) {
+        console.error('Ошибка при регистрации:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// ВХОД
+app.post('/login', async (req, res) => {
+    try {
+        const { email, password, rememberMe } = req.body;
+        
+        // Ищем пользователя
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (result.rows.length === 0) {
+        return res.status(401).json({ error: 'Неверный email или пароль' });
+        }
+        
+        const user = result.rows[0];
+        
+        // Проверяем пароль
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) {
+        return res.status(401).json({ error: 'Неверный email или пароль' });
+        }
+        const expiresIn = rememberMe ? '30d' : '7d';
+        // Создаем токен
+        const token = jwt.sign(
+        { id: user.id, email: user.email },
+        process.env.JWT_SECRET || 'secret',
+        {expiresIn}
+        );
+        
+        res.json({
+        token,
+        user: { id: user.id, email: user.email, name: user.name }
+        });
+    } catch (error) {
+        console.error('Ошибка при входе:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Получить текущего пользователя (защищенный маршрут)
+app.get('/me', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+        const result = await pool.query('SELECT id, email, name FROM users WHERE id = $1', [req.user!.id]);
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Ошибка:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
 app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
 });

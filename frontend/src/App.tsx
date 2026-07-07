@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Link, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { FaPen, FaTrash } from 'react-icons/fa';
+import { FaPen, FaTrash, FaCalendarDay } from 'react-icons/fa';
+import { ImBook } from "react-icons/im";
 import ScoreCircle from './ScoreCircle';
 interface Pupil {
   id: number;
@@ -64,6 +65,8 @@ function App() {
         
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/pupils" element={<PupilsPage />} />
           <Route path="pupils/:id" element={<PupilDetail />}/>
@@ -77,9 +80,38 @@ function App() {
 
 function HomePage() {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Добро пожаловать в Pupils Management System! 🎓</h1>
-      <p>Это CRM-система для репетиторов и их учеников.</p>
+    <div>
+      <div style={{ padding: '20px' }}>
+        <h1>Добро пожаловать в Pupils Management System! 🎓</h1>
+        <p>Это CRM-система для репетиторов и их учеников.</p>
+      </div>
+      <div style={{ marginTop: '30px', display: 'flex', gap: '15px', justifyContent: 'center' }}>
+        <Link   to="/login" 
+          style={{ 
+            padding: '12px 24px', 
+            background: '#007bff', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '8px',
+            fontSize: '16px'
+          }}
+        >
+          Войти в систему
+        </Link>
+        <Link 
+          to="/register" 
+          style={{ 
+            padding: '12px 24px', 
+            background: '#28a745', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '8px',
+            fontSize: '16px'
+          }}
+        >
+          Зарегистрироваться
+        </Link>
+      </div>
     </div>
   );
 }
@@ -87,14 +119,30 @@ function HomePage() {
 function PupilsPage() {
   const [pupils, setPupils] = useState<Pupil[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<number | null>(null); // ID редактируемого ученика
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState({ name: '', grade: '' });
   const [isHovered, setIsHovered] = useState(false);
+  
   useEffect(() => {
-    fetch('http://localhost:3000/pupils')
-      .then(response => response.json()) 
+    const token = localStorage.getItem('token');
+    
+    fetch('http://localhost:3000/pupils', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+      .then(response => {
+        if (response.status === 401) {
+          window.location.assign('/login');
+          return null;
+        }
+        return response.json();
+      })
       .then(data => {
-        setPupils(data); 
+        if (data) {
+          setPupils(data); 
+        }
         setLoading(false); 
       })
       .catch(error => {
@@ -106,235 +154,204 @@ function PupilsPage() {
   if (loading) {
     return <div style={{ padding: '20px' }}>Загрузка данных...</div>;
   }
-  // Функция удаления
-const handleDelete = async (id: number) => {
-  // Спрашиваем подтверждение
-  const isConfirmed = window.confirm('Ты точно хочешь удалить этого ученика? Это действие нельзя отменить.');
   
-  if (!isConfirmed) return;
-
-  try {
-    const res = await fetch(`http://localhost:3000/pupils/${id}`, {
-      method: 'DELETE',
-    });
+  const handleDelete = async (id: number) => {
+    const isConfirmed = window.confirm('Ты точно хочешь удалить этого ученика? Это действие нельзя отменить.');
     
-    if (res.ok) {
-      // Удаляем ученика из списка на фронтенде
-      setPupils(pupils.filter(p => p.id !== id));
-    } else {
-      alert('Ошибка при удалении');
+    if (!isConfirmed) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/pupils/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (res.ok) {
+        setPupils(pupils.filter(p => p.id !== id));
+      } else {
+        alert('Ошибка при удалении');
+      }
+    } catch (error) {
+      console.error('Ошибка:', error);
     }
-  } catch (error) {
-    console.error('Ошибка:', error);
-  }
-};
+  };
 
-// Функция редактирования (пока простая, через prompt)
-// const handleEdit = async (pupil: Pupil) => {
-//   const newName = window.prompt('Новое имя:', pupil.name);
-//   if (newName === null) return; // Нажали отмену
+  const startEdit = (pupil: Pupil) => {
+    setEditingId(pupil.id);
+    setEditData({ name: pupil.name, grade: pupil.grade });
+  };
 
-//   const newGrade = window.prompt('Новый класс:', pupil.grade);
-//   if (newGrade === null) return;
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditData({ name: '', grade: '' });
+  };
+  
+  const saveEdit = async (id: number) => {
+    try {
+      const pupil = pupils.find(p => p.id === id);
+      if (!pupil) return;
 
-//   try {
-//     const res = await fetch(`http://localhost:3000/pupils/${pupil.id}`, {
-//       method: 'PUT',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify({
-//         name: newName,
-//         grade: newGrade,
-//         averageScore: pupil.averageScore,
-//         homeworkCompleted: pupil.homeworkCompleted,
-//       }),
-//     });
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/pupils/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editData.name,
+          grade: editData.grade.includes('класс') ? editData.grade : `${editData.grade} класс`,
+          averageScore: pupil.averageScore,
+          homeworkCompleted: pupil.homeworkCompleted,
+        }),
+      });
 
-//     if (res.ok) {
-//       const updatedPupil = await res.json();
-//       // Обновляем список
-//       setPupils(pupils.map(p => p.id === updatedPupil.id ? updatedPupil : p));
-//     } else {
-//       alert('Ошибка при обновлении');
-//     }
-//   } catch (error) {
-//     console.error('Ошибка:', error);
-//   }
-// };
-  // Начать редактирование
-const startEdit = (pupil: Pupil) => {
-  setEditingId(pupil.id);
-  setEditData({ name: pupil.name, grade: pupil.grade });
-};
-
-// Отменить редактирование
-const cancelEdit = () => {
-  setEditingId(null);
-  setEditData({ name: '', grade: '' });
-};
-const saveEdit = async (id: number) => {
-  try {
-    const pupil = pupils.find(p => p.id === id);
-    if (!pupil) return;
-
-    const res = await fetch(`http://localhost:3000/pupils/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: editData.name,
-        grade: editData.grade.includes('класс') ? editData.grade : `${editData.grade} класс`,
-        averageScore: pupil.averageScore,
-        homeworkCompleted: pupil.homeworkCompleted,
-      }),
-    });
-
-    if (res.ok) {
-      const updatedPupil = await res.json();
-      setPupils(pupils.map(p => p.id === updatedPupil.id ? updatedPupil : p));
-      setEditingId(null);
-    } else {
-      alert('Ошибка при сохранении');
+      if (res.ok) {
+        const updatedPupil = await res.json();
+        setPupils(pupils.map(p => p.id === updatedPupil.id ? updatedPupil : p));
+        setEditingId(null);
+      } else {
+        alert('Ошибка при сохранении');
+      }
+    } catch (error) {
+      console.error('Ошибка:', error);
     }
-  } catch (error) {
-    console.error('Ошибка:', error);
-  }
-};
+  };
+  
   return (
-  <div style={{ padding: '20px' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
-      <div style = {{ marginLeft: 'center'}}>
-        <h1 style = {{fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontWeight: '600', fontSize: '30px'}}>Список учеников</h1>
-        <p style = {{fontSize: '16px', color: 'gray', textAlign: 'left'}}>Количество учеников: {pupils.length}</p>
-        {/* <Link to="/">На главную</Link> */}
-      </div>
-      <Link 
-        to="/pupils/new" 
-        style={{
-          padding: '12px 24px', 
-          background: isHovered ? '#6d5ce0' : '#8C7CF0',
-          color: '#14171F', 
-          textDecoration: 'none',
-          borderRadius: '8px',
-          fontWeight: 'bold',
-          fontSize: '16px'
-        }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}>
-          
-        + Добавить ученика
-      </Link>
-    </div>
-    
-    {pupils.length === 0 ? (
-      <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-        <p style={{ fontSize: '18px', marginBottom: '15px' }}>Учеников пока нет 📚</p>
-      </div>
-    ) : (
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {pupils.map(pupil => (
-          <li key={pupil.id} style={{ 
-            marginBottom: '10px', 
-            padding: '15px', 
-            background: '#1E222C', 
+    <div style={{ padding: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+        <div style={{ marginLeft: 'center'}}>
+          <h1 style={{fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontWeight: '600', fontSize: '30px'}}>Список учеников</h1>
+          <p style={{fontSize: '16px', color: 'gray', textAlign: 'left'}}>Количество учеников: {pupils.length}</p>
+        </div>
+        <Link 
+          to="/pupils/new" 
+          style={{
+            padding: '12px 24px', 
+            background: isHovered ? '#6d5ce0' : '#8C7CF0',
+            color: '#14171F', 
+            textDecoration: 'none',
             borderRadius: '8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            //alignItems: 'center'
-            textAlign: 'left',
-            color: 'white'
-          }}>
-            <div style={{ flex: 1 }}>
-              {editingId === pupil.id ? (
-                // РЕЖИМ РЕДАКТИРОВАНИЯ
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <input
-                    type="text"
-                    value={editData.name}
-                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                    style={{ padding: '6px', fontSize: '16px', border: '2px solid #007bff', borderRadius: '4px' }}
-                    autoFocus
-                  />
-                  <input
-                    type="text"
-                    value={editData.grade}
-                    onChange={(e) => setEditData({ ...editData, grade: e.target.value })}
-                    style={{ padding: '6px', fontSize: '14px', border: '2px solid #007bff', borderRadius: '4px' }}
-                  />
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => saveEdit(pupil.id)}
-                      style={{ 
-                        padding: '6px 12px', 
-                        background: '#28a745', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      ✓ Сохранить
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      style={{ 
-                        padding: '6px 12px', 
-                        background: '#6c757d', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      ✗ Отмена
-                    </button>
+            fontWeight: 'bold',
+            fontSize: '16px'
+          }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}>
+          + Добавить ученика
+        </Link>
+      </div>
+      
+      {pupils.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+          <p style={{ fontSize: '18px', marginBottom: '15px' }}>Учеников пока нет 📚</p>
+        </div>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0 }}>
+          {pupils.map(pupil => (
+            <li key={pupil.id} style={{ 
+              marginBottom: '10px', 
+              padding: '15px', 
+              background: '#1E222C', 
+              borderRadius: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              textAlign: 'left',
+              color: 'white'
+            }}>
+              <div style={{ flex: 1 }}>
+                {editingId === pupil.id ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                      style={{ padding: '6px', fontSize: '16px', border: '2px solid #007bff', borderRadius: '4px' }}
+                      autoFocus
+                    />
+                    <input
+                      type="text"
+                      value={editData.grade}
+                      onChange={(e) => setEditData({ ...editData, grade: e.target.value })}
+                      style={{ padding: '6px', fontSize: '14px', border: '2px solid #007bff', borderRadius: '4px' }}
+                    />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => saveEdit(pupil.id)}
+                        style={{ 
+                          padding: '6px 12px', 
+                          background: '#28a745', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✓ Сохранить
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        style={{ 
+                          padding: '6px 12px', 
+                          background: '#6c757d', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✗ Отмена
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                // РЕЖИМ ПРОСМОТРА
-                <Link to={`/pupils/${pupil.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <strong style={{ fontSize: '16px' }}>{pupil.name}</strong> ({pupil.grade})
-                  <br />
-                  <span style={{ color: '#666', fontSize: '14px' }}>
-                    ДЗ выполнено: {pupil.homeworkCompleted}
-                  </span>
-                </Link>
-              )}
-              
-            </div>
-              
-            {editingId !== pupil.id && (
-              <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
-                <ScoreCircle score={pupil.averageScore} />
-                <button
-                  onClick={() => startEdit(pupil)}
-                  style={{ 
-                    backgroundColor: 'transparent',  
-                    border: 'none',                   
-                    borderRadius: '0',
-                    padding: '6px 12px',
-                    cursor: 'pointer'
-                  }}>
-                  <FaPen color="#999" size={14} />
-                </button>
-                <button
-                  onClick={() => handleDelete(pupil.id)}
-                  style={{ 
-                    backgroundColor: 'transparent',  
-                    border: 'none',                  
-                    borderRadius: '0',
-                    padding: '6px 12px',
-                    cursor: 'pointer'
-                  }}
-                >
-                    <FaTrash color="#999" size={14} />
-                </button>
+                ) : (
+                  <Link to={`/pupils/${pupil.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <strong style={{ fontSize: '16px' }}>{pupil.name}</strong> ({pupil.grade})
+                    <br />
+                    <span style={{ color: '#666', fontSize: '14px' }}>
+                      ДЗ выполнено: {pupil.homeworkCompleted}
+                    </span>
+                  </Link>
+                )}
               </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-);
+              
+              {editingId !== pupil.id && (
+                <div style={{ display: 'flex', gap: '10px', marginLeft: '20px' }}>
+                  <ScoreCircle score={pupil.averageScore} />
+                  <button
+                    onClick={() => startEdit(pupil)}
+                    style={{ 
+                      backgroundColor: 'transparent',  
+                      border: 'none',                   
+                      borderRadius: '0',
+                      padding: '6px 12px',
+                      cursor: 'pointer'
+                    }}>
+                    <FaPen color="#999" size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(pupil.id)}
+                    style={{ 
+                      backgroundColor: 'transparent',  
+                      border: 'none',                  
+                      borderRadius: '0',
+                      padding: '6px 12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <FaTrash color="#999" size={14} />
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 function PupilDetail() {
   const { id } = useParams<{ id: string }>();
@@ -347,11 +364,17 @@ function PupilDetail() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const pupilRes = await fetch(`http://localhost:3000/pupils/${id}`);
+        const token = localStorage.getItem('token');
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        };
+        
+        const pupilRes = await fetch(`http://localhost:3000/pupils/${id}`, { headers });
         const pupilData = await pupilRes.json();
         setPupil(pupilData);
 
-        const hwRes = await fetch(`http://localhost:3000/pupils/${id}/homeworks`);
+        const hwRes = await fetch(`http://localhost:3000/pupils/${id}/homeworks`, { headers });
         const hwData = await hwRes.json();
         setHomeworks(hwData);
         
@@ -374,9 +397,13 @@ function PupilDetail() {
   const handleAddHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/pupils/${id}/homeworks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           ...newHomework,
           grade: newHomework.grade ? Number(newHomework.grade) : null
@@ -386,14 +413,16 @@ function PupilDetail() {
       if (res.ok) {
         const createdHw = await res.json();
         setHomeworks([createdHw, ...homeworks]); 
-        setNewHomework({ subject: '', description: '', grade: '' }); // Очиcтка формы
+        setNewHomework({ subject: '', description: '', grade: '' });
       }
     } catch (error) {
       console.error('Ошибка при добавлении ДЗ:', error);
     }
   };
+  
   if (loading) return <div style={{ padding: '20px' }}>Загрузка</div>;
   if (!pupil) return <div style={{ padding: '20px' }}>Ученик не найден</div>;
+  
   return (
     <div style={{ padding: '5px', maxWidth: '800px', margin: '0 auto' }}>
       <Link to="/pupils">← Назад к списку</Link>
@@ -417,16 +446,6 @@ function PupilDetail() {
             required
             style={{ marginLeft: '30px', flex: 1, padding: '8px' }}
           />
-          {/* <input
-            name="grade"
-            type="number"
-            placeholder="Оценка (1-5)"
-            value={newHomework.grade}
-            onChange={handleHwChange}
-            min="1"
-            max="5"
-            style={{ width: '100px', padding: '8px' }}
-          /> */}
         </div>
         <textarea
           name="description"
@@ -486,11 +505,13 @@ function AddPupilPage() {
   e.preventDefault();
   
   try {
+    const token = localStorage.getItem('token'); 
     const response = await fetch('http://localhost:3000/pupils', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,  // ← Добавляем токен
+        },
       body: JSON.stringify({
         ...formData,
         // Добавляем "класс" если его нет
@@ -757,86 +778,105 @@ function LessonsPage() {
   const [pupils, setPupils] = useState<Pupil[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const [newLesson, setNewLesson] = useState({
     pupil_id: '',
     date: '',
     duration: 60,
     price: 1500,
+    topic: '',    
+    note: ''
   });
 
   // Загружаем уроки и учеников
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [lessonsRes, pupilsRes] = await Promise.all([
-          fetch('http://localhost:3000/lessons'),
-          fetch('http://localhost:3000/pupils'),
-        ]);
-        
-        const lessonsData = await lessonsRes.json();
-        const pupilsData = await pupilsRes.json();
-        
-        setLessons(lessonsData);
-        setPupils(pupilsData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      const lessonsRes = await fetch('http://localhost:3000/lessons', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const lessonsData = await lessonsRes.json();
+      setLessons(lessonsData);
+
+      const pupilsRes = await fetch('http://localhost:3000/pupils', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const pupilsData = await pupilsRes.json();
+      setPupils(pupilsData);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error('Ошибка загрузки:', error);
+      setLoading(false);
+    }
+  };
+  fetchData();
+}, []);
 
   // Обработчик изменения формы
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setNewLesson(prev => ({
-      ...prev,
-      [name]: name === 'duration' || name === 'price' ? Number(value) : value
-    }));
-  };
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const { name, value } = e.target;
+  setNewLesson(prev => ({
+    ...prev,
+    [name]: name === 'duration' || name === 'price' ? Number(value) : value
+  }));
+};
 
   // Добавление урока
   const handleAddLesson = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('http://localhost:3000/lessons', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newLesson),
-      });
-      
-      if (res.ok) {
-        const createdLesson = await res.json();
-        // Находим имя ученика
-        const pupil = pupils.find(p => p.id === createdLesson.pupil_id);
-        setLessons([{ ...createdLesson, pupil_name: pupil?.name || '' }, ...lessons]);
-        setShowForm(false);
-        setNewLesson({ pupil_id: '', date: '', duration: 60, price: 1500 });
-      }
-    } catch (error) {
-      console.error('Ошибка при добавлении урока:', error);
+  e.preventDefault();
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch('http://localhost:3000/lessons', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(newLesson),
+    });
+    
+    if (res.ok) {
+      const createdLesson = await res.json();
+      setLessons([createdLesson, ...lessons]);
+      setNewLesson({ pupil_id: '', date: '', duration: 60, price: 1000, topic: '', note: '' });
+      setShowForm(false);
     }
-  };
+  } catch (error) {
+    console.error('Ошибка при создании урока:', error);
+  }
+};
 
   // Изменение статуса урока
-  const handleStatusChange = async (lessonId: number, newStatus: string) => {
-    try {
-      const res = await fetch(`http://localhost:3000/lessons/${lessonId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      
-      if (res.ok) {
-        setLessons(lessons.map(l => 
-          l.id === lessonId ? { ...l, status: newStatus } : l
-        ));
-      }
-    } catch (error) {
-      console.error('Ошибка при обновлении статуса:', error);
+const handleStatusChange = async (lessonId: number, newStatus: string) => {
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`http://localhost:3000/lessons/${lessonId}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    
+    if (res.ok) {
+      setLessons(lessons.map(l => 
+        l.id === lessonId ? { ...l, status: newStatus } : l
+      ));
     }
-  };
+  } catch (error) {
+    console.error('Ошибка при обновлении статуса:', error);
+  }
+};
 
   // Форматирование даты
   const formatDate = (dateStr: string) => {
@@ -868,20 +908,29 @@ function LessonsPage() {
   if (loading) return <div style={{ padding: '20px' }}>Загрузка...</div>;
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '1500px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>📚 Уроки</h1>
+        <h1 style = {{fontSize:'36px',paddingLeft:'10px'}}><ImBook style={{color: '#8C7CF0', fontSize:'30px', paddingLeft: '20px'}} /> Уроки</h1>
         <button 
           onClick={() => setShowForm(!showForm)}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
           style={{ 
-            padding: '10px 20px', 
-            background: '#007bff', 
-            color: 'white', 
+            //padding: '16px 26px',
+            width: '220px',
+            height: '52px',
+            fontSize: '16px', 
+            background: isHovered ? '#6d5ce0' : '#8C7CF0',
+            color: '#14171F', 
+            fontWeight: '600',
+            textDecoration: 'none',
             border: 'none', 
-            borderRadius: '4px',
-            cursor: 'pointer'
+            borderRadius: '8px',
+            cursor: 'pointer',
+            marginTop: '20px'
           }}
         >
+          
           {showForm ? 'Отмена' : '+ Добавить урок'}
         </button>
       </div>
@@ -890,22 +939,25 @@ function LessonsPage() {
       {showForm && (
         <form onSubmit={handleAddLesson} style={{ 
           padding: '20px', 
-          background: '#f9f9f9', 
+          background: '#1E222C', 
           borderRadius: '8px', 
           marginBottom: '20px',
-          border: '1px solid #ddd'
+          width: '490px',
+          marginLeft: '500px',
+          height: '660px'
         }}>
-          <h3 style={{ marginTop: 0 }}>Новый урок</h3>
+          <h3 style={{ marginTop: 0, textAlign: 'left', color: 'white' }}>Добавить урок</h3>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px', marginBottom: '15px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Ученик:</label>
+          <div style={{ marginBottom: '15px' }}>
+            {/* Ученик - на всю ширину */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Ученик:</label>
               <select
                 name="pupil_id"
                 value={newLesson.pupil_id}
                 onChange={handleChange}
                 required
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
               >
                 <option value="">Выберите ученика</option>
                 {pupils.map(pupil => (
@@ -914,34 +966,51 @@ function LessonsPage() {
               </select>
             </div>
 
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Дата:</label>
+            {/* Тема урока - на всю ширину */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Тема урока:</label>
               <input
-                type="date"
-                name="date"
-                value={newLesson.date}
+                type="text"
+                name="topic"
+                value={newLesson.topic}
                 onChange={handleChange}
-                required
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                placeholder="Например: Квадратные уравнения"
+                style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
               />
             </div>
 
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Длительность (мин):</label>
-              <input
-                type="number"
-                name="duration"
-                value={newLesson.duration}
-                onChange={handleChange}
-                min="30"
-                step="15"
-                required
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
-              />
+            {/* Дата и Длительность - на одной строке */}
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Дата:</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={newLesson.date}
+                  onChange={handleChange}
+                  required
+                  style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
+                />
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Длительность (мин):</label>
+                <input
+                  type="number"
+                  name="duration"
+                  value={newLesson.duration}
+                  onChange={handleChange}
+                  min="30"
+                  step="15"
+                  required
+                  style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
+                />
+              </div>
             </div>
 
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Стоимость (₽):</label>
+            {/* Стоимость - на всю ширину */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Стоимость (₽):</label>
               <input
                 type="number"
                 name="price"
@@ -949,7 +1018,20 @@ function LessonsPage() {
                 onChange={handleChange}
                 min="0"
                 required
-                style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
+              />
+            </div>
+
+            {/* Заметка - на всю ширину */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '16px', marginBottom: '5px', color: 'white' }}>Заметка:</label>
+              <textarea
+                name="note"
+                value={newLesson.note}
+                onChange={handleChange}
+                placeholder="Заметки к уроку..."
+                rows={3}
+                style={{ width: '100%', padding: '10px', borderRadius: '4px', border: 'none' }}
               />
             </div>
           </div>
@@ -957,12 +1039,14 @@ function LessonsPage() {
           <button 
             type="submit"
             style={{ 
-              padding: '10px 20px', 
-              background: '#28a745', 
-              color: 'white', 
+              padding: '12px 30px', 
+              background: '#8C7CF0', 
+              color: 'black', 
               border: 'none', 
               borderRadius: '4px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '16px'
             }}
           >
             Создать урок
@@ -971,11 +1055,18 @@ function LessonsPage() {
       )}
 
       {/* Список уроков */}
-      <div style={{ background: 'white', borderRadius: '8px', border: '1px solid #ddd' }}>
+    {!showForm && (
+      <div style={{ background: '#1E222C', marginLeft: '100px', width: '1200px', height: '400px', borderRadius: '8px'}}>
         {lessons.length === 0 ? (
-          <p style={{ padding: '40px', textAlign: 'center', color: '#999' }}>
-            Уроков пока нет. Добавьте первый урок!
-          </p>
+          <div>
+            <p style={{ paddingTop: '100px', fontSize: '40px', textAlign: 'center', color: 'white'}}> <FaCalendarDay/> </p>
+            <p style={{ paddingTop: '20px', textAlign: 'center', color: 'white'}}>
+              Начни планировать занятия
+            </p>
+            <p style={{ paddingTop: '15px', textAlign: 'center', color: '#999' }}>
+              Здесь появится расписание твоих уроков с <br></br>учениками - темы, время, материалы <br></br>и заметки.
+            </p>
+          </div>
         ) : (
           <div>
             {lessons.map(lesson => (
@@ -990,7 +1081,7 @@ function LessonsPage() {
                 }}
               >
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                  <div style={{ display: 'grid', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
                     <strong style={{ fontSize: '16px' }}>{lesson.pupil_name}</strong>
                     <span style={{ 
                       padding: '3px 10px', 
@@ -1046,6 +1137,177 @@ function LessonsPage() {
           </div>
         )}
       </div>
+    )}
+    </div>
+  );
+}
+
+function LoginPage() {
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [error, setError] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    try {
+      const res = await fetch('http://localhost:3000/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, rememberMe }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setError(data.error || 'Ошибка входа');
+        return;
+      }
+      
+      // Сохраняем токен и данные пользователя
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Переходим к списку учеников
+      window.location.href = '/pupils';
+    } catch{
+      setError('Ошибка при отправке данных');
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '400px', margin: '50px auto', padding: '20px' }}>
+      <h1>Вход в систему</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Пароль:</label>
+          <input
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
+        </div>
+          <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+            />
+          <label htmlFor="rememberMe" style={{ cursor: 'pointer' }}>Запомнить меня</label>
+        </div>
+        <button type="submit" style={{ padding: '10px 20px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          Войти
+        </button>
+      </form>
+      <p style={{ marginTop: '15px' }}>
+        Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+      </p>
+    </div>
+  );
+}
+function RegisterPage() {
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [error, setError] = useState('');
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    try {
+      const res = await fetch('http://localhost:3000/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setError(data.error || 'Ошибка регистрации');
+        return;
+      }
+      
+      // Сохраняем токен и данные пользователя
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Переходим к списку учеников
+      window.location.href = '/pupils';
+    }catch{
+      setError('Ошибка при отправке данных');
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '400px', margin: '50px auto', padding: '20px' }}>
+      <h1>Регистрация</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Имя:</label>
+          <input
+            type="text"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            required
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Пароль:</label>
+          <input
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
+        </div>
+        <button type="submit" style={{ padding: '10px 20px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          Зарегистрироваться
+        </button>
+      </form>
+      <p style={{ marginTop: '15px' }}>
+        Уже есть аккаунт? <Link to="/login">Войти</Link>
+      </p>
     </div>
   );
 }
